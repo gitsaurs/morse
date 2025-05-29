@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Morse Code Translator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col">
+  <!-- Header -->
+  <header class="bg-indigo-600 text-white text-center py-4 shadow-md">
+    <h1 class="text-xl font-bold">Morse Code Translator</h1>
+    <h6 class="text-sm">Developed by Netsaurs</h1>
+  </header>
+
+  <!-- Main App -->
+  <main class="flex-1 container mx-auto px-4 py-6">
+    <!-- Translation Section -->
+    <div class="bg-white rounded-2xl shadow-lg p-6 space-y-4">
+      <div>
+        <label for="textInput" class="block font-medium mb-1">Enter Text:</label>
+        <textarea id="textInput" rows="4" class="w-full border rounded-xl p-3 focus:ring-2 focus:ring-indigo-400 resize-none"></textarea>
+      </div>
+
+      <div class="flex gap-4 flex-wrap">
+        <button id="translateToMorse" class="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 shadow">To Morse</button>
+        <button id="translateToText" class="bg-green-600 text-white px-4 py-2 rounded-xl hover:bg-green-700 shadow">To Text</button>
+        <button id="playAudio" class="bg-yellow-500 text-white px-4 py-2 rounded-xl hover:bg-yellow-600 shadow">Play Morse</button>
+        <button id="copyOutput" class="bg-blue-500 text-white px-4 py-2 rounded-xl hover:bg-blue-600 shadow">Copy</button>
+        <button id="saveTranslation" class="bg-purple-500 text-white px-4 py-2 rounded-xl hover:bg-purple-600 shadow">Save</button>
+        <button id="clearFields" class="bg-red-500 text-white px-4 py-2 rounded-xl hover:bg-red-600 shadow">Clear</button>
+      </div>
+
+      <div>
+        <label for="output" class="block font-medium mb-1">Output:</label>
+        <textarea id="output" rows="4" class="w-full border rounded-xl p-3 resize-none bg-gray-100" readonly></textarea>
+      </div>
+    </div>
+
+    <!-- Saved Translations -->
+    <section class="mt-10">
+      <h2 class="text-xl font-semibold mb-4">Saved Translations</h2>
+      <div id="historyList" class="grid gap-4"></div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-indigo-600 text-white text-center py-3 mt-auto shadow-inner">
+    <p class="text-sm">&copy; 2025 Morse Code Translator | Built with ❤️</p>
+  </footer>
+
+  <script>
+    const morseMap = {
+      'A': '.-', 'B': '-...', 'C': '-.-.', 'D': '-..', 'E': '.', 'F': '..-.',
+      'G': '--.', 'H': '....', 'I': '..', 'J': '.---', 'K': '-.-', 'L': '.-..',
+      'M': '--', 'N': '-.', 'O': '---', 'P': '.--.', 'Q': '--.-', 'R': '.-.',
+      'S': '...', 'T': '-', 'U': '..-', 'V': '...-', 'W': '.--', 'X': '-..-',
+      'Y': '-.--', 'Z': '--..',
+      '0': '-----', '1': '.----', '2': '..---', '3': '...--', '4': '....-',
+      '5': '.....', '6': '-....', '7': '--...', '8': '---..', '9': '----.',
+      ' ': '/'
+    };
+
+    const textToMorse = text => text.toUpperCase().split('').map(c => morseMap[c] || '').join(' ');
+    const morseToText = morse => {
+      const inverse = Object.entries(morseMap).reduce((acc, [k, v]) => (acc[v] = k, acc), {});
+      return morse.split(' ').map(code => inverse[code] || '').join('');
+    };
+
+    document.getElementById('translateToMorse').onclick = () => {
+      const input = document.getElementById('textInput').value;
+      document.getElementById('output').value = textToMorse(input);
+    };
+
+    document.getElementById('translateToText').onclick = () => {
+      const input = document.getElementById('textInput').value;
+      document.getElementById('output').value = morseToText(input);
+    };
+
+    document.getElementById('copyOutput').onclick = () => {
+      navigator.clipboard.writeText(document.getElementById('output').value);
+    };
+
+    document.getElementById('clearFields').onclick = () => {
+      document.getElementById('textInput').value = '';
+      document.getElementById('output').value = '';
+    };
+
+    document.getElementById('playAudio').onclick = () => {
+      const unit = 150;
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      let time = audioCtx.currentTime;
+      const morse = document.getElementById('output').value;
+
+      morse.split('').forEach(symbol => {
+        if (symbol === '.') playBeep(audioCtx, time, unit);
+        if (symbol === '-') playBeep(audioCtx, time, unit * 3);
+        time += (symbol === ' ' ? unit * 2 : unit * 1.5) / 1000;
+      });
+    };
+
+    function playBeep(ctx, startTime, duration) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 700;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + duration / 1000);
+    }
+
+    // IndexedDB setup
+    const request = indexedDB.open('MorseDB', 1);
+    let db;
+
+    request.onupgradeneeded = function (e) {
+      db = e.target.result;
+      db.createObjectStore('translations', { keyPath: 'id', autoIncrement: true });
+    };
+
+    request.onsuccess = function (e) {
+      db = e.target.result;
+      displayHistory();
+    };
+
+    document.getElementById('saveTranslation').onclick = () => {
+      const input = document.getElementById('textInput').value;
+      const output = document.getElementById('output').value;
+      const tx = db.transaction('translations', 'readwrite');
+      const store = tx.objectStore('translations');
+      store.add({ input, output, date: new Date().toISOString() });
+      tx.oncomplete = displayHistory;
+    };
+
+    function displayHistory() {
+      const historyList = document.getElementById('historyList');
+      historyList.innerHTML = '';
+      const tx = db.transaction('translations', 'readonly');
+      const store = tx.objectStore('translations');
+      const req = store.openCursor(null, 'prev');
+
+      req.onsuccess = function (e) {
+        const cursor = e.target.result;
+        if (cursor) {
+          const div = document.createElement('div');
+          div.className = 'bg-white p-4 rounded-xl shadow hover:shadow-md transition-all';
+          div.innerHTML = `<p><strong>Text:</strong> ${cursor.value.input}</p>
+                           <p><strong>Morse:</strong> ${cursor.value.output}</p>
+                           <p class='text-sm text-gray-500'>${new Date(cursor.value.date).toLocaleString()}</p>`;
+          historyList.appendChild(div);
+          cursor.continue();
+        }
+      };
+    }
+  </script>
+</body>
+
+</html>
